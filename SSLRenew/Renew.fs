@@ -99,6 +99,7 @@ let needToRenew (env: IEnv) (now: DateTime) =
                     |> int
 
                 do! Async.Sleep totalMillisecondsUntilRun
+                File.Delete filePath
                 do! renewCertificate env
             | None ->
                 File.Delete filePath

@@ -81,8 +81,16 @@ let private safeApiCall f =
             return Ok result
         with e -> return Error e.Message
     }
+    
+let private statusToApi = function
+    | Draft -> "draft"
+    | PendingValidation -> "pending_validation"
+    | Issued -> "issued"
+    | Cancelled -> "cancelled"
+    | ExpiringSoon -> "expiring_soon"
+    | Expired -> "expired"
 
-let checkForError (jObject: JObject) =
+let private checkForError (jObject: JObject) =
     let errorToken = jObject.["error"]
     if not (isNull errorToken) && errorToken.HasValues
     then Error <| errorToken.["type"].ToString()
@@ -143,7 +151,7 @@ let getCertificates (env: IEnv) (statuses: seq<CertificateStatus>) =
                     (url = baseUrl,
                      query =
                          [ "access_key", env.Configuration.ZeroSSLKey
-                           "certificate_status", String.Join(",", statuses |> Seq.map (fun x -> x.ToString()))
+                           "certificate_status", statuses |> Seq.map (statusToApi) |> String.concat ","
                            "limit", "100"
                            "page", "1" ],
                      httpMethod = "GET"))

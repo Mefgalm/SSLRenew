@@ -16,6 +16,9 @@ open Logary.Message
 open Logary.Configuration
 open Logary.Targets
 open Serilog
+open FsHttp
+
+open FsHttp.DslCE
 
 
 [<Literal>]
@@ -70,5 +73,10 @@ let renewRun () =
 
 [<EntryPoint>]
 let main argv =
+    http {
+        POST "https://api.zerossl.com/certificates"
+        
+    }
+    
     renewRun () |> Async.RunSynchronously |> ignore
     0
