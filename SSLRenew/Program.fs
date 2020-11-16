@@ -73,10 +73,5 @@ let renewRun () =
 
 [<EntryPoint>]
 let main argv =
-    http {
-        POST "https://api.zerossl.com/certificates"
-        
-    }
-    
     renewRun () |> Async.RunSynchronously |> ignore
     0
