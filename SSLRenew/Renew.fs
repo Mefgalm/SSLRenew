@@ -1,6 +1,7 @@
 module SSLRenew.Renew
 
 open System
+open System.Threading.Tasks
 open FsToolkit.ErrorHandling
 open System.IO
 open System.Linq
@@ -32,29 +33,33 @@ let getPrivateKeyAndCsr (env: IEnv) =
         privateKey, csr
 
 
-let createDomainStep (env: IEnv) =
+let createDomainStep (cert: Api.Results option) (env: IEnv) =
     asyncResult {
         let privateKey, csr = getPrivateKeyAndCsr env
-        let! draftCertificates = Api.getCertificates env [ Api.CertificateStatus.Draft ]
-        let getDomainFileValidation =
-            draftCertificates.Results
-            |> Seq.tryFind (fun x ->
-                x.Validation.OtherMethods.First().Value.FileValidationUrlHttp.Contains(env.Configuration.Domain))
-            
-        let getValidation() =
+
+        let getValidation () =
             asyncResult {
-                match getDomainFileValidation with
-                | Some x -> return x.Validation.OtherMethods.Values.First(), x.Id
+                match cert with
+                | Some c ->
+                    if c.Status = "issued" || c.Status = "pending_validation" then
+                        return c.Validation.OtherMethods.Values.First(), c.Id
+                    elif c.Status = "draft" then
+                        let! createDomainResult = Api.createDomain env env.Configuration.Domain csr
+                        return createDomainResult.Validation.OtherMethods.Values.First(), createDomainResult.Id
+                    else
+                        return failwith "Unknown status"
                 | None ->
                     let! createDomainResult = Api.createDomain env env.Configuration.Domain csr
                     return createDomainResult.Validation.OtherMethods.Values.First(), createDomainResult.Id
             }
-        let! validation, certificateId = getValidation()
+
+        let! validation, certificateId = getValidation ()
         let content = String.Join(Environment.NewLine, validation.FileValidationContent)
-        let path = Uri(validation.FileValidationUrlHttp)
-                       .LocalPath
-                       .Replace("\\", Path.DirectorySeparatorChar.ToString())
-                       .Replace("/", Path.DirectorySeparatorChar.ToString())
+
+        let path =
+            Uri(validation.FileValidationUrlHttp).LocalPath.Replace("\\", Path.DirectorySeparatorChar.ToString())
+                .Replace("/", Path.DirectorySeparatorChar.ToString())
+
         FileSystem.createValidationFile env path content
         return privateKey, certificateId
     }
@@ -73,9 +78,9 @@ let downloadCertificatesStep env id privateKey =
         FileSystem.updateCertificateAndPrivateKey env mergeCtrAndBundle privateKey
     }
 
-let renewCertificate (env: IEnv) =
+let renewCertificate results (env: IEnv) =
     asyncResult {
-        let! privateKey, certificateId = createDomainStep env
+        let! privateKey, certificateId = createDomainStep results env
 
         env.Logger.LogInformation(sprintf "Certificate created %s" certificateId)
 
@@ -102,26 +107,18 @@ let isWellKnownFileExists (env: IEnv) =
 let needToRenew (env: IEnv) (now: DateTime) =
     asyncResult {
         env.Logger.LogInformation("Check for renew")
-        let! wellKnownFileResult = isWellKnownFileExists env
+        let! certificates =
+            Api.getCertificates
+                env
+                [ Api.CertificateStatus.Draft
+                  Api.CertificateStatus.Issued
+                  Api.CertificateStatus.PendingValidation ]
 
-        match wellKnownFileResult with
-        | Some _ ->
-            let! certificates = Api.getCertificates env [ Api.CertificateStatus.Issued ]
+        let certificateWithThisFile =
+            certificates.Results
+            |> Seq.tryFind (fun c ->
+                c.Validation.OtherMethods.First().Value.FileValidationUrlHttp.Contains(env.Configuration.Domain))
 
-            let certificateWithThisFile =
-                certificates.Results
-                |> Seq.tryFind (fun c ->
-                    c.Validation.OtherMethods.First().Value.FileValidationUrlHttp.Contains(env.Configuration.Domain))
-
-            match certificateWithThisFile with
-            | Some cert ->
-                let totalMillisecondsUntilRun =
-                    min (cert.Expires.AddSeconds(5.) - now).TotalMilliseconds 0.
-                    |> int
-
-                do! Async.Sleep totalMillisecondsUntilRun
-                do! renewCertificate env
-            | None -> do! renewCertificate env
-        | None ->
-            do! renewCertificate env
+        do! renewCertificate certificateWithThisFile env
+        do! Async.Sleep 3_600_000
     }
