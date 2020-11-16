@@ -90,6 +90,7 @@ let getWellKnownFile (env: IEnv) =
 
 let needToRenew (env: IEnv) (now: DateTime) =
     asyncResult {
+        env.Logger.LogInformation ("Check for renew")
         let! filePath = getWellKnownFile env
 
         match filePath with
