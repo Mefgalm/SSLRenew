@@ -92,15 +92,20 @@ let renewCertificate (env: IEnv) =
 let wellKnownFolder = ".well-known"
 
 let isWellKnownFileExists (env: IEnv) =
-    let fileName = sprintf "%s.txt" env.Configuration.Domain
-    File.Exists(Path.Join(env.Configuration.ProjectRootPath, wellKnownFolder, fileName))
+    let wellKnowPath = Path.Join(env.Configuration.ProjectRootPath, wellKnownFolder)
+    if Directory.Exists wellKnowPath then
+        let wellKnownFiles = Directory.GetFiles(wellKnowPath, "*.txt", SearchOption.AllDirectories)
+        if wellKnownFiles.Length > 1 then Result.Error "More then one file" else Ok(wellKnownFiles |> Seq.tryHead)
+    else
+        Ok None
 
 let needToRenew (env: IEnv) (now: DateTime) =
     asyncResult {
         env.Logger.LogInformation("Check for renew")
-        let isExists = isWellKnownFileExists env
+        let! wellKnownFileResult = isWellKnownFileExists env
 
-        if isExists then
+        match wellKnownFileResult with
+        | Some _ ->
             let! certificates = Api.getCertificates env [ Api.CertificateStatus.Issued ]
 
             let certificateWithThisFile =
@@ -117,6 +122,6 @@ let needToRenew (env: IEnv) (now: DateTime) =
                 do! Async.Sleep totalMillisecondsUntilRun
                 do! renewCertificate env
             | None -> do! renewCertificate env
-        else
+        | None ->
             do! renewCertificate env
     }
