@@ -53,8 +53,8 @@ let createDomainStep (env: IEnv) =
         let content = String.Join(Environment.NewLine, validation.FileValidationContent)
         let path = Uri(validation.FileValidationUrlHttp)
                        .LocalPath
-                       .Replace("\\", Path.PathSeparator.ToString())
-                       .Replace("/", Path.PathSeparator.ToString())
+                       .Replace("\\", Path.DirectorySeparatorChar.ToString())
+                       .Replace("/", Path.DirectorySeparatorChar.ToString())
         FileSystem.createValidationFile env path content
         return privateKey, certificateId
     }
