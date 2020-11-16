@@ -15,7 +15,7 @@ type Configuration =
       ZeroSSLKey: string
       PrivateKey: string
       Certificate: string
-      Domains: IEnumerable<string>
+      Domain: string
       ProjectRootPath: string
       CertificatePath: string
       PrivateKeyPath: string

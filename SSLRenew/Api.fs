@@ -96,7 +96,7 @@ let private checkForError (jObject: JObject) =
     then Error <| errorToken.["type"].ToString()
     else Ok()
 
-let createDomain (env: IEnv) (domains: seq<string>) csr =
+let createDomain (env: IEnv) domain csr =
     asyncResult {
         let! result =
             safeApiCall (fun () ->
@@ -105,7 +105,7 @@ let createDomain (env: IEnv) (domains: seq<string>) csr =
                      query = [ "access_key", env.Configuration.ZeroSSLKey ],
                      httpMethod = "POST",
                      body =
-                         FormValues [ "certificate_domains", String.Join(",", domains)
+                         FormValues [ "certificate_domains", domain
                                       "certificate_validity_days", "90"
                                       "certificate_csr", csr ]))
 

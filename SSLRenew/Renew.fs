@@ -35,18 +35,25 @@ let getPrivateKeyAndCsr (env: IEnv) =
 let createDomainStep (env: IEnv) =
     asyncResult {
         let privateKey, csr = getPrivateKeyAndCsr env
-
-        let! createDomainResult = Api.createDomain env env.Configuration.Domains csr
-
-        let validation = createDomainResult.Validation.OtherMethods.Values.First()
-
+        let! draftCertificates = Api.getCertificates env [ Api.CertificateStatus.Draft ]
+        let getDomainFileValidation =
+            draftCertificates.Results
+            |> Seq.tryFind (fun x ->
+                x.Validation.OtherMethods.First().Value.FileValidationUrlHttp.Contains(env.Configuration.Domain))
+            
+        let getValidation() =
+            asyncResult {
+                match getDomainFileValidation with
+                | Some x -> return x.Validation.OtherMethods.Values.First(), x.Id
+                | None ->
+                    let! createDomainResult = Api.createDomain env env.Configuration.Domain csr
+                    return createDomainResult.Validation.OtherMethods.Values.First(), createDomainResult.Id
+            }
+        let! validation, certificateId = getValidation()
         let content = String.Join(Environment.NewLine, validation.FileValidationContent)
-
         let path = Uri(validation.FileValidationUrlHttp).LocalPath.Replace("/", "\\")
-
         FileSystem.createValidationFile env path content
-
-        return privateKey, createDomainResult.Id
+        return privateKey, certificateId
     }
 
 let downloadCertificatesStep env id privateKey =
@@ -81,29 +88,22 @@ let renewCertificate (env: IEnv) =
 [<Literal>]
 let wellKnownFolder = ".well-known"
 
-let getWellKnownFile (env: IEnv) =
-    let wellKnowPath = Path.Join(env.Configuration.ProjectRootPath, wellKnownFolder)
-
-    if Directory.Exists wellKnowPath then
-        let wellKnownFiles = Directory.GetFiles(wellKnowPath, "*.txt", SearchOption.AllDirectories)
-        if wellKnownFiles.Length > 1 then Result.Error "More then one file" else Ok(wellKnownFiles |> Seq.tryHead)
-    else
-        Ok None
+let isWellKnownFileExists (env: IEnv) =
+    let fileName = sprintf "%s.txt" env.Configuration.Domain
+    File.Exists(Path.Join(env.Configuration.ProjectRootPath, wellKnownFolder, fileName))
 
 let needToRenew (env: IEnv) (now: DateTime) =
     asyncResult {
         env.Logger.LogInformation("Check for renew")
-        let! filePath = getWellKnownFile env
+        let isExists = isWellKnownFileExists env
 
-        match filePath with
-        | Some filePath ->
+        if isExists then
             let! certificates = Api.getCertificates env [ Api.CertificateStatus.Issued ]
-            let fileName = Path.GetFileName filePath
 
             let certificateWithThisFile =
                 certificates.Results
                 |> Seq.tryFind (fun c ->
-                    c.Validation.OtherMethods.First().Value.FileValidationUrlHttp.Contains(fileName))
+                    c.Validation.OtherMethods.First().Value.FileValidationUrlHttp.Contains(env.Configuration.Domain))
 
             match certificateWithThisFile with
             | Some cert ->
@@ -112,10 +112,8 @@ let needToRenew (env: IEnv) (now: DateTime) =
                     |> int
 
                 do! Async.Sleep totalMillisecondsUntilRun
-                File.Delete filePath
                 do! renewCertificate env
-            | None ->
-                File.Delete filePath
-                do! renewCertificate env
-        | None -> do! renewCertificate env
+            | None -> do! renewCertificate env
+        else
+            do! renewCertificate env
     }
