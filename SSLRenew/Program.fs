@@ -58,16 +58,16 @@ let rec loop failedCount (env: IEnv) =
             env.Logger.LogError("To many retries")
         else
             match! Renew.needToRenew env DateTime.Now with
-            | Ok () -> do! loop 0 env
+            | Ok () -> return! loop 0 env
             | Result.Error error ->
                 env.Logger.LogError(sprintf "Error: %s" error)
-                do! loop (failedCount + 1) env
+                return! loop (failedCount + 1) env
     }
 
 let renewRun () =
     asyncResult {
         let env = createEnv ()
-        do! loop 0 env
+        return! loop 0 env
     }
 
 
