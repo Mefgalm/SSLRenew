@@ -13,6 +13,8 @@ type Csr =
 type Configuration =
     { Csr: Csr
       ZeroSSLKey: string
+      PrivateKey: string
+      Certificate: string
       Domains: IEnumerable<string>
       ProjectRootPath: string
       CertificatePath: string

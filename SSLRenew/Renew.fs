@@ -11,8 +11,10 @@ open Logary.Message
 open Logary.Configuration
 open Logary.Targets
 
-let createDomainStep (env: IEnv) =
-    asyncResult {
+let getPrivateKeyAndCsr (env: IEnv) =
+    if not (String.IsNullOrEmpty env.Configuration.PrivateKey) && not (String.IsNullOrEmpty env.Configuration.Certificate) then
+        env.Configuration.PrivateKey, env.Configuration.Certificate
+    else
         let privateKey, cryptoKey = CSR.generateRsaKeyPair ()
         let csrData = env.Configuration.Csr
 
@@ -25,6 +27,13 @@ let createDomainStep (env: IEnv) =
                 csrData.Organization
                 csrData.OrganizationUnit
                 csrData.Common
+                
+        privateKey, csr               
+    
+
+let createDomainStep (env: IEnv) =
+    asyncResult {
+        let privateKey, csr = getPrivateKeyAndCsr env
 
         let! createDomainResult = Api.createDomain env env.Configuration.Domains csr
 
